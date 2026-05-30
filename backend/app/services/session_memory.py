@@ -13,6 +13,7 @@ class SessionMemory(TypedDict, total=False):
     last_business_ids: list[int]
     last_filters: dict[str, Any]
     last_plan: dict[str, Any]
+    summary: str
 
 
 _sessions: dict[str, SessionMemory] = {}

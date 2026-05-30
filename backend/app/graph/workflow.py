@@ -11,6 +11,7 @@ from backend.app.graph.nodes import (
     load_memory,
     merge_results,
     plan_query,
+    rerank_results,
     run_tools,
     save_memory,
 )
@@ -38,6 +39,7 @@ def build_graph():
     graph.add_node("run_tools", run_tools)
     graph.add_node("merge_results", merge_results)
     graph.add_node("fetch_business_details", fetch_business_details)
+    graph.add_node("rerank_results", rerank_results)
     graph.add_node("generate_answer", generate_answer)
     graph.add_node("save_memory", save_memory)
 
@@ -54,7 +56,8 @@ def build_graph():
     )
     graph.add_edge("run_tools", "merge_results")
     graph.add_edge("merge_results", "fetch_business_details")
-    graph.add_edge("fetch_business_details", "generate_answer")
+    graph.add_edge("fetch_business_details", "rerank_results")
+    graph.add_edge("rerank_results", "generate_answer")
     graph.add_edge("generate_answer", "save_memory")
     graph.add_edge("save_memory", END)
 

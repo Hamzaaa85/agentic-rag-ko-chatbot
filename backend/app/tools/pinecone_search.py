@@ -15,6 +15,7 @@ from backend.app.services.pinecone_client import get_pinecone_index
 def _build_metadata_filter(
     city: str | None = None,
     category_id: int | None = None,
+    sub_category_id: int | None = None,
     chunk_type: str | None = None,
 ) -> dict[str, Any] | None:
     """
@@ -31,6 +32,9 @@ def _build_metadata_filter(
 
     if category_id is not None:
         conditions.append({"category_id": {"$eq": category_id}})
+
+    if sub_category_id is not None:
+        conditions.append({"sub_category_id": {"$eq": sub_category_id}})
 
     if chunk_type:
         conditions.append({"chunk_type": {"$eq": chunk_type}})
@@ -85,6 +89,7 @@ def search_pinecone(
     top_k: int = 10,
     city: str | None = None,
     category_id: int | None = None,
+    sub_category_id: int | None = None,
     chunk_type: str | None = None,
 ) -> list[PineconeMatch]:
     """
@@ -108,6 +113,7 @@ def search_pinecone(
     metadata_filter = _build_metadata_filter(
         city=city,
         category_id=category_id,
+        sub_category_id=sub_category_id,
         chunk_type=chunk_type,
     )
     if metadata_filter:
@@ -145,6 +151,7 @@ def search_pinecone_business_ids(
     top_k: int = 10,
     city: str | None = None,
     category_id: int | None = None,
+    sub_category_id: int | None = None,
     chunk_type: str | None = None,
 ) -> list[int]:
     """Unique business_ids in score order (first chunk per id wins)."""
@@ -156,6 +163,7 @@ def search_pinecone_business_ids(
         top_k=top_k,
         city=city,
         category_id=category_id,
+        sub_category_id=sub_category_id,
         chunk_type=chunk_type,
     ):
         if hit.business_id in seen:

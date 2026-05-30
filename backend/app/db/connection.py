@@ -46,10 +46,20 @@ def get_db_cursor() -> Generator[Cursor, None, None]:
     """
     Borrow a connection from the pool, yield a RealDictCursor, return to pool.
 
-    Do not call conn.close() — use putconn() so the pool can reuse the connection.
+    Includes a health check for Neon serverless: if the pooled connection was
+    closed server-side (idle timeout), we discard it and open a fresh one.
     """
     pg_pool = get_connection_pool()
     conn = pg_pool.getconn()  # take from pool (blocks if maxconn exhausted)
+
+    # Health check — Neon closes idle connections after ~5 min
+    try:
+        conn.cursor().execute("SELECT 1")
+    except Exception:
+        # Connection is stale — discard and get a fresh one
+        pg_pool.putconn(conn, close=True)
+        conn = pg_pool.getconn()
+
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             yield cur

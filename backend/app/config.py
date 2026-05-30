@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-large"
     embedding_dimension: int = 1024
 
+    # Reranking (NVIDIA NIM). When key is empty, reranking is skipped gracefully.
+    # NVIDIA Reranker (Cross-Encoder)
+    nvidia_api_key: str = ""
+    # Abstention drops results if the highest reranker score for a semantic query
+    # logit is below rerank_relevance_threshold. This is OFF by default because
+    # the right threshold depends on the model's score distribution and must be
+    # found with an eval set first — otherwise it wrongly rejects good results.
+    rerank_abstain_enabled: bool = False
+    rerank_relevance_threshold: float = -5.0
+
     langsmith_tracing: bool = False
     langsmith_api_key: str | None = None
     langsmith_project: str = "agentic-rag"

@@ -18,3 +18,7 @@ class BusinessChatState(TypedDict, total=False):
 
     answer: str
     errors: list[str]
+
+    # True when retrieval/rerank found no result relevant enough to show.
+    # generate_answer then produces a natural "not found / clarify" reply.
+    no_match: bool
