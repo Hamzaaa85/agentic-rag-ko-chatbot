@@ -13,6 +13,8 @@ from backend.app.graph.prompts import (
 )
 from backend.app.config import get_settings
 from backend.app.graph.state import BusinessChatState
+from langchain_core.runnables import RunnableConfig
+
 from backend.app.schemas.planner import SearchPlan
 from backend.app.services.llm import get_chat_model
 from backend.app.services.nvidia_rerank import rerank_with_scores
@@ -56,7 +58,9 @@ def plan_query(state: BusinessChatState) -> dict[str, Any]:
     prompt = build_planner_user_prompt(
         user_message=state["user_message"],
         history=state.get("history", []),
-        summary=memory.get("summary", "No summary available.")
+        summary=memory.get("summary", "No summary available."),
+        last_business_names=memory.get("last_business_names", []),
+        last_business_ids=memory.get("last_business_ids", [])
     )
 
     try:
@@ -144,7 +148,7 @@ def merge_results(state: BusinessChatState) -> dict[str, Any]:
     plan = _plan_from_state(state)
     limit = _cap_limit(plan.limit)
 
-    if plan.action == "direct_reply":
+    if plan.action == "chat":
         return {"business_ids": []}
 
     if plan.action == "follow_up":
@@ -155,20 +159,14 @@ def merge_results(state: BusinessChatState) -> dict[str, Any]:
                 "answer": "I don't have a previous business list for this session. Please search for businesses first.",
             }
 
-        # Multiple businesses requested in one message (e.g. "KidKit details + Dost Bazaar number")
-        if plan.follow_up_indices:
-            selected: list[int] = []
-            for idx in plan.follow_up_indices:
-                if 0 <= idx < len(ids) and int(ids[idx]) not in selected:
-                    selected.append(int(ids[idx]))
-            # Fall back to first business if all indices were out of range
-            return {"business_ids": selected if selected else [int(ids[0])]}
-
-        # Single business follow-up
-        index = plan.follow_up_index if plan.follow_up_index is not None else 0
-        if index < 0 or index >= len(ids):
-            index = 0
-        return {"business_ids": [int(ids[index])]}
+        if plan.follow_up_business_ids:
+            # Only keep the ones that were actually in the last search to prevent hallucinations
+            selected = [i for i in plan.follow_up_business_ids if i in ids]
+            if selected:
+                return {"business_ids": selected}
+                
+        # Fall back to first business if no valid IDs found
+        return {"business_ids": [int(ids[0])]}
 
     postgres_ids = [int(row["id"]) for row in state.get("postgres_results", []) if row.get("id")]
     pinecone_ids = [
@@ -293,7 +291,7 @@ def _clarify_no_match(user_message: str) -> str:
     )
 
 
-def generate_answer(state: BusinessChatState) -> dict[str, Any]:
+def generate_answer(state: BusinessChatState, config: RunnableConfig) -> dict[str, Any]:
     """Generate final answer from Postgres data only."""
     plan = _plan_from_state(state)
     if plan.action == "direct_reply":
@@ -302,18 +300,18 @@ def generate_answer(state: BusinessChatState) -> dict[str, Any]:
     businesses = state.get("businesses", [])
 
     # Abstention: retrieval/rerank found nothing relevant enough to show.
-    if state.get("no_match") and not businesses:
+    if state.get("no_match") and not businesses and plan.action != "chat":
         return {"answer": _clarify_no_match(state["user_message"])}
 
-    if state.get("answer") and not businesses:
+    if state.get("answer") and not businesses and plan.action != "chat":
         return {"answer": state["answer"]}
 
-    if not businesses:
+    if not businesses and plan.action != "chat":
         return {"answer": _clarify_no_match(state["user_message"])}
 
     # Detail mode: follow_up means user asked about a specific business (contact/more info).
-    # Also use detail mode when only one business is returned (nothing to list briefly).
-    detail_mode = plan.action == "follow_up" or len(businesses) == 1
+    # Chat mode is naturally conversational without detail formatting.
+    detail_mode = plan.action == "follow_up" or (plan.action != "chat" and len(businesses) == 1)
 
     prompt = build_answer_user_prompt(
         user_message=state["user_message"],
@@ -328,7 +326,8 @@ def generate_answer(state: BusinessChatState) -> dict[str, Any]:
             [
                 {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
-            ]
+            ],
+            config=config
         )
     except Exception as exc:
         return {
@@ -353,7 +352,27 @@ def save_memory(state: BusinessChatState) -> dict[str, Any]:
 
     memory["history"] = history
     if plan.action == "business_search" and state.get("business_ids"):
-        memory["last_business_ids"] = list(state["business_ids"])
+        new_ids = list(state["business_ids"])
+        new_names = [b.get("business", {}).get("business_name", "Unknown") for b in state.get("businesses", [])]
+        
+        combined_ids = []
+        combined_names = []
+        
+        # Add new ones first
+        for bid, bname in zip(new_ids, new_names):
+            if bid not in combined_ids:
+                combined_ids.append(bid)
+                combined_names.append(bname)
+                
+        # Add existing ones from memory
+        for bid, bname in zip(memory.get("last_business_ids", []), memory.get("last_business_names", [])):
+            if bid not in combined_ids:
+                combined_ids.append(bid)
+                combined_names.append(bname)
+                
+        # Keep up to top 15 recent businesses in memory context
+        memory["last_business_ids"] = combined_ids[:15]
+        memory["last_business_names"] = combined_names[:15]
         memory["last_filters"] = dict(plan.filters or {})
     memory["last_plan"] = plan.model_dump()
     

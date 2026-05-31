@@ -11,6 +11,7 @@ MAX_HISTORY_MESSAGES = 20
 class SessionMemory(TypedDict, total=False):
     history: list[dict[str, str]]
     last_business_ids: list[int]
+    last_business_names: list[str]
     last_filters: dict[str, Any]
     last_plan: dict[str, Any]
     summary: str
@@ -23,6 +24,7 @@ def _empty_memory() -> SessionMemory:
     return {
         "history": [],
         "last_business_ids": [],
+        "last_business_names": [],
         "last_filters": {},
         "last_plan": {},
     }
@@ -41,6 +43,7 @@ def save_session_memory(session_id: str, memory: SessionMemory) -> SessionMemory
     normalized.update(memory)
     normalized["history"] = list(normalized.get("history", []))[-MAX_HISTORY_MESSAGES:]
     normalized["last_business_ids"] = [int(i) for i in normalized.get("last_business_ids", [])]
+    normalized["last_business_names"] = list(normalized.get("last_business_names", []))
     normalized["last_filters"] = dict(normalized.get("last_filters", {}))
     normalized["last_plan"] = dict(normalized.get("last_plan", {}))
     _sessions[session_id] = normalized

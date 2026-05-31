@@ -11,30 +11,22 @@ Return only data matching the SearchPlan schema. Never write SQL.
 
 Choose exactly one action:
 
-- direct_reply: greetings, thanks, or general small talk that does not need business data.
-  Populate the answer field with a friendly, helpful reply.
-  Examples: "hello", "shukriya", "bye", "how are you"
+- chat: greetings, thanks, general small talk, OR conversational questions about the previously shown businesses (e.g., "Which of these is best for cakes?", "What do you think of them?").
+  Do NOT generate the answer yourself. Just route to 'chat' and the answer engine will take over.
+  Examples: "hello", "shukriya", "bye", "how are you", "which one is better?", "i want a cake which one should i pick"
 
-- follow_up: the user is asking for more information about one or more previously shown businesses.
+- follow_up: the user is explicitly asking to fetch MORE detail, contact info, or website for specific previously shown businesses.
   This includes:
     - Contact info: "pehlay walay ka number do", "second wala email", "website kya hai"
     - More detail: "tell me more", "aur batao", "details dikhao", "iske baare mein batao"
     - Named detail: "NikkaNikki ke baare mein batao", "first wala detail do"
 
-  For a SINGLE business, set follow_up_index (zero-based):
-    - pehlay / first / 1st / pehla → 0
-    - second / dosra / 2nd → 1
-    - third / teesra / 3rd → 2
-    - If a business name is mentioned, find its position from conversation history.
-    - If unclear, use 0.
+  You MUST set follow_up_business_ids as a list of EXACT Database IDs.
+  Identify the business from the user's message (e.g., "first", "second", or by name) and match it to the exact [ID: 123] from the 'Recent Business ID Dictionary' section in your prompt.
+  Example: if the user says "tell me about NikkaNikki" and your prompt says "[ID: 55] NikkaNikki", return follow_up_business_ids: [55].
+  Example: if user says "number do pehlay aur teesray ka", find the 1st and 3rd IDs in the MOST RECENT search mentioned in the conversation history and return them.
 
-  For MULTIPLE businesses in one message (e.g. "tell me more about KidKit also Dost Bazaar ka number do"):
-    - Set follow_up_indices as a list of zero-based indices.
-    - Identify each business by name or ordinal from the conversation history.
-    - Example: if KidKit was 5th and Dost Bazaar was 4th → follow_up_indices: [4, 3]
-    - Do NOT set follow_up_index when using follow_up_indices.
-
-- business_search: the user asks to find, compare, or list businesses.
+- business_search: the user asks to find, list, or discover NEW businesses (not currently in context).
 
 SESSION MEMORY & CONTEXT (CRITICAL):
   - You will be provided with 'Recent conversation history' and a 'Summary'.
@@ -62,7 +54,7 @@ CATEGORY MATCHING (CRITICAL — use the list below):
 {categories}
 
 Use Postgres for exact filters:
-- city
+- city (ONLY for actual city names like Karachi, Lahore, Islamabad. Do NOT set city for countries like "Pakistan". If the user asks for "Pakistan", leave the city filter empty for a nationwide search).
 - category_id or sub_category_id (from the list above — NEVER guess names)
 - has_website
 - package_status
@@ -70,13 +62,11 @@ Use Postgres for exact filters:
 - has_facebook
 
 PINECONE SEMANTIC SEARCH (CRITICAL):
-ALWAYS set needs_pinecone to TRUE if the query meets ANY of these conditions:
-1. It contains a specific product or service name (e.g., "multani halwa", "iphone", "pizza").
-2. It contains a specific business name.
-3. It contains descriptive adjectives (e.g., "cheap", "best", "affordable", "good").
-4. It is a multi-word descriptive phrase.
-ONLY set needs_pinecone to FALSE if the user asks for a pure, broad category without any extra words or names (e.g., "gym in Karachi", "hospitals in Lahore").
-When using Pinecone, always populate semantic_query with a clear English search phrase.
+PINECONE SEMANTIC SEARCH (CRITICAL):
+You MUST set needs_pinecone to TRUE for ALMOST ALL QUERIES.
+Only set needs_pinecone to FALSE if the user's exact words are literally just a broad category name and a city (e.g., "gym in Karachi", "food in Lahore").
+If the user asks for ANYTHING specific inside a category (e.g., "sweet shops", "multani halwa", "iphone", "pizza", "cheap baby products", "dentist"), YOU MUST SET needs_pinecone=TRUE.
+When using Pinecone, always populate semantic_query with a clear English search phrase (e.g., "sweet shops").
 
 AREA / LOCALITY HANDLING (CRITICAL):
   Postgres only filters by city (e.g. "Karachi", "Lahore") — it CANNOT filter by
@@ -90,7 +80,15 @@ AREA / LOCALITY HANDLING (CRITICAL):
   - "salon near Clifton" → needs_pinecone=true, semantic_query="salon Clifton", filters.city="Karachi"
   - "restaurant in Lahore Johar Town" → needs_pinecone=true, semantic_query="restaurant Johar Town", filters.city="Lahore"
 
-For mixed queries (e.g. "cheap baby products in Karachi"), set both needs_postgres and needs_pinecone to true.
+MULTI-INTENT QUERIES (CRITICAL RULE):
+You can only execute ONE search at a time. If the user asks for completely different searches in a single message (e.g., "gyms in Lahore and sweet shops in Karachi"):
+- YOU MUST PICK THE FIRST INTENT ONLY (e.g., sweet shops in Karachi).
+- Do NOT mix categories.
+- Do NOT mix cities.
+- Do NOT combine the semantic queries (e.g., do NOT write "sweet shops gym").
+Configure the plan strictly for the FIRST intent.
+
+For mixed queries within the SAME domain (e.g. "cheap baby products in Karachi"), set both needs_postgres and needs_pinecone to true.
 
 Keep limit between 1 and 10. Default to 5.
 """.strip()
@@ -119,9 +117,20 @@ def _format_history(history: list[dict]) -> str:
 def build_planner_user_prompt(
     user_message: str,
     history: list[dict[str, str]],
-    summary: str = "No summary available."
+    summary: str = "No summary available.",
+    last_business_names: list[str] | None = None,
+    last_business_ids: list[int] | None = None,
 ) -> str:
     """Compact context for the structured planner call."""
+    last_names_context = ""
+    if last_business_names and last_business_ids:
+        # Match names and IDs positionally
+        names_list = "\n".join(
+            f"[ID: {bid}] {name}" 
+            for bid, name in zip(last_business_ids, last_business_names)
+        )
+        last_names_context = f"\nRecent Business ID Dictionary (for exact ID mapping):\n{names_list}\n"
+
     return f"""
 User message:
 {user_message}
@@ -131,6 +140,7 @@ Recent conversation history:
 
 Conversation Summary:
 {summary}
+{last_names_context}
 """.strip()
 
 
@@ -156,12 +166,12 @@ def _format_business_summary(bundle: dict, index: int) -> str:
         lines.append(f"Address: {b['business_address']}")
 
     if b.get("message"):
-        lines.append(f"Description: {str(b['message'])[:200]}")
+        lines.append(f"Description: {str(b['message'])[:500]}")
 
     # First highlight — services headline only
     for h in (bundle.get("highlights") or [])[:1]:
         if h.get("products_or_services"):
-            lines.append(f"Services: {str(h['products_or_services'])[:150]}")
+            lines.append(f"Services: {str(h['products_or_services'])[:400]}")
 
     return "\n".join(lines)
 
@@ -203,14 +213,14 @@ def _format_business_detail(bundle: dict, index: int) -> str:
         lines.append(f"Facebook: {b['facebook_social_link']}")
 
     if b.get("message"):
-        lines.append(f"Description: {str(b['message'])[:300]}")
+        lines.append(f"Description: {str(b['message'])[:800]}")
 
     # First highlight block
     for h in (bundle.get("highlights") or [])[:1]:
         if h.get("business_heading"):
             lines.append(f"Heading: {h['business_heading']}")
         if h.get("products_or_services"):
-            lines.append(f"Services: {str(h['products_or_services'])[:200]}")
+            lines.append(f"Services: {str(h['products_or_services'])[:500]}")
 
     # Top 3 reviews
     review_lines: list[str] = []
@@ -276,18 +286,23 @@ Language rule (strictly follow):
 - When in doubt, use English.
 
 HONESTY & ABSTENTION PROTOCOL (CRITICAL - ENTERPRISE STANDARD):
-- You will be provided with a list of businesses. Your job is to semantically evaluate if they MATCH the user's core request.
-- If ALL provided businesses are completely irrelevant to the user's request (e.g., they asked for a gym, but you were given a dentist and hardware store), DO NOT list them!
-  - Instead, honestly say: "I couldn't find any exact matches for [request] in our database."
-  - You may briefly mention: "However, here are some nearby places in the [category] category:" (only if somewhat related).
-- IMPORTANT: Do NOT be overly pedantic about adjectives. If the user asks for "cheap baby products" and you have "premium baby clothes", that IS a valid match. Present it confidently!
-  - Only use the "no exact matches" apology if the core category/service is completely wrong.
-- If SOME businesses match and others don't (e.g., 2 baby shops, 3 skincare shops), ONLY list the exact matches. You can append a disclaimer at the end about the others.
+- You will receive a list of fetched businesses. Because this is an AI search, it may return some irrelevant businesses at the bottom of the list (e.g., if the user asks for "sweet shops", you might get 2 sweet shops and 3 random snack/nimco shops).
+- You MUST ACT AS A STRICT FILTER. If a business provided in the context is NOT highly relevant to the user's explicit query, DO NOT INCLUDE IT IN YOUR RESPONSE.
+- Ignore irrelevant businesses completely. Do NOT mention them. Do NOT append a disclaimer about them. Just drop them like they don't exist.
+- If this means you only show 1 or 2 businesses out of the 5 provided, that is EXACTLY what you should do! Quality over quantity.
+- If ALL provided businesses are completely irrelevant, honestly say: "I couldn't find any exact matches for [request] in our database."
+- IMPORTANT: Be smart about synonyms. If the user asks for "sweet shops" and a business is a "confectionery", that IS a perfect match. Keep it.
 
-Tone:
-- Always open with 1-2 warm, natural sentences before presenting any business data.
-- Be conversational and helpful, not robotic.
-- If you are rejecting irrelevant results, be polite and apologetic about the limited data.
+MULTI-INTENT HANDLING:
+- If the user asks for two completely different things in one message (e.g., "gyms in Lahore and sweet shops in Karachi"), the system will only search for the FIRST one.
+- In your answer, provide the results for the first request, and politely explain that you can only search for one category at a time. Ask them if they'd like you to search for the second item next!
+
+Tone & Style (CRITICAL FOR NATURAL FEEL):
+- You must sound like a highly intelligent, polite, and helpful human expert, NOT a robotic search engine.
+- Always open with 1-2 warm, conversational, and context-aware sentences. For example, instead of "Here are some businesses:", say "I've looked through our database and found some excellent options that match your request for [X]!" or "Sure thing! I pulled up the contact details for [X]."
+- Use smooth transitions between the intro and the data.
+- If you reject all results, be empathetic. (e.g. "I'm really sorry, but it looks like we don't have any [X] listed in our system right now.")
+- At the end of your response, always include a natural, friendly follow-up question asking if they need contact details, comparisons, or anything else.
 
 LIST MODE (when multiple businesses are returned from a search):
 - Show a brief summary card for each relevant business: name, category, city, description, services.
@@ -295,9 +310,16 @@ LIST MODE (when multiple businesses are returned from a search):
 - After the list, add one friendly line inviting the user to ask for more.
 
 DETAIL MODE (when the user asked for more info or contact about a specific business):
+- Present the details in a readable, conversational flow, but keep the actual contact info cleanly formatted.
 - Share all available contact details: phone, WhatsApp, email, website, social links.
-- If a contact field is not present in the data, say it is not available.
+- If a contact field is not present in the data, just omit it naturally or say it's not available if explicitly asked.
 - Include reviews, FAQs, and services if relevant.
+
+CHAT MODE (when the user asks a conversational question or compares businesses from history):
+- The `Fetched business data` might be empty. This is expected!
+- Look at the `Recent conversation history` to see the businesses you previously recommended.
+- Answer the user's question naturally based on the history. E.g., if they ask "Which is best for cakes?", recommend the one that mentioned cakes in the history.
+- Be highly conversational, opinionated (but helpful), and context-aware.
 
 General rules:
 - Use ONLY the provided business data. Never invent anything.
@@ -313,11 +335,12 @@ def build_answer_user_prompt(
     detail_mode: bool = False,
 ) -> str:
     """Prompt for final answer generation from fetched Postgres bundles."""
-    mode_hint = (
-        "DETAIL MODE: User asked for more info or contact details about a specific business."
-        if detail_mode
-        else "LIST MODE: Show summary cards only. Do NOT show contact details. End with an invitation to ask for more."
-    )
+    if plan.get("action") == "chat":
+        mode_hint = "CHAT MODE: User is asking a conversational question. Answer naturally using history."
+    elif detail_mode:
+        mode_hint = "DETAIL MODE: User asked for more info or contact details about a specific business."
+    else:
+        mode_hint = "LIST MODE: Show summary cards only. Do NOT show contact details. End with an invitation to ask for more."
     return f"""
 User message:
 {user_message}

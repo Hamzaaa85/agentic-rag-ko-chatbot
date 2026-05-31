@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     )
 
     openai_api_key: str = ""
-    openai_chat_model: str = "gpt-4o-mini"
+    # openai_chat_model: str = "gpt-4o-mini"
+    openai_chat_model: str = "gpt-5.4-mini-2026-03-17"
     database_url: str = ""
 
     # Postgres pool (use with Neon -pooler URL for best results)

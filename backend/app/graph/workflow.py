@@ -22,7 +22,7 @@ from backend.app.schemas.planner import SearchPlan
 def route_after_plan(state: BusinessChatState) -> Literal["direct", "follow_up", "search"]:
     """Skip retrieval tools for direct replies and memory-only follow-ups."""
     plan = SearchPlan.model_validate(state.get("plan") or {})
-    if plan.action == "direct_reply":
+    if plan.action == "chat":
         return "direct"
     if plan.action == "follow_up":
         return "follow_up"
@@ -73,4 +73,16 @@ def run_graph(session_id: str, message: str) -> BusinessChatState:
             "user_message": message,
             "errors": [],
         }
+    )
+
+def stream_graph(session_id: str, message: str):
+    """Stream the compiled graph for one chat turn, yielding messages and values."""
+    graph = build_graph()
+    return graph.stream(
+        {
+            "session_id": session_id,
+            "user_message": message,
+            "errors": [],
+        },
+        stream_mode=["messages", "values"]
     )

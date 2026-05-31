@@ -22,7 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
-from backend.app.graph.workflow import run_graph
+from backend.app.graph.workflow import run_graph, stream_graph
 from backend.app.services.session_memory import clear_session_memory, get_session_memory
 
 
@@ -127,19 +127,35 @@ def main() -> None:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Graph run ho raha hai..."):
-                try:
-                    result = run_graph(session_id=st.session_state.session_id, message=prompt)
-                    answer = result.get("answer") or "No answer returned."
-                except Exception as exc:
-                    result = {
-                        "session_id": st.session_state.session_id,
-                        "answer": f"Error: {exc}",
-                        "errors": [str(exc)],
-                    }
-                    answer = result["answer"]
+            result = None
+            try:
+                def token_generator():
+                    nonlocal result
+                    for event_type, data in stream_graph(session_id=st.session_state.session_id, message=prompt):
+                        if event_type == "messages":
+                            msg, metadata = data
+                            if metadata.get("langgraph_node") == "generate_answer":
+                                yield msg.content
+                        elif event_type == "values":
+                            result = data
 
-            st.markdown(answer)
+                with st.spinner("Searching and thinking..."):
+                    answer = st.write_stream(token_generator())
+                
+                # If generate_answer didn't yield anything (e.g. error/fallback)
+                if not answer and result:
+                    answer = result.get("answer", "No answer returned.")
+                    if answer:
+                        st.markdown(answer)
+                        
+            except Exception as exc:
+                result = {
+                    "session_id": st.session_state.session_id,
+                    "answer": f"Error: {exc}",
+                    "errors": [str(exc)],
+                }
+                answer = result["answer"]
+                st.markdown(answer)
 
         st.session_state.messages.append({"role": "assistant", "content": answer})
         st.session_state.last_result = result

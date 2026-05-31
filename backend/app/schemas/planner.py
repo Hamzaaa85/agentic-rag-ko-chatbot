@@ -8,26 +8,21 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class SearchPlan(BaseModel):
     """Planner contract: structured intent only, never SQL."""
 
-    action: Literal["business_search", "direct_reply", "follow_up"] = "business_search"
+    action: Literal["business_search", "chat", "follow_up"] = "business_search"
     needs_postgres: bool = False
     needs_pinecone: bool = False
     filters: dict[str, Any] = Field(default_factory=dict)
     semantic_query: str | None = None
     limit: int = Field(default=5, ge=1, le=10)
-    answer: str | None = None
-    follow_up_index: int | None = Field(
-        default=None,
-        description="Zero-based index for a single follow-up business.",
-    )
-    follow_up_indices: list[int] = Field(
+    follow_up_business_ids: list[int] = Field(
         default_factory=list,
         description=(
-            "Zero-based indices when the user asks about multiple specific businesses "
-            "in one message. E.g. [3, 4] for the 4th and 5th businesses shown."
+            "Exact Database IDs of businesses the user is asking to follow up on. "
+            "E.g., [301] or [104, 45]. Do NOT guess IDs; use the exact ones provided in the conversation history."
         ),
     )
 
-    @field_validator("semantic_query", "answer", mode="before")
+    @field_validator("semantic_query", mode="before")
     @classmethod
     def _blank_to_none(cls, value: Any) -> Any:
         if isinstance(value, str) and not value.strip():
@@ -36,7 +31,7 @@ class SearchPlan(BaseModel):
 
     @model_validator(mode="after")
     def _normalize_flags(self) -> "SearchPlan":
-        if self.action == "direct_reply":
+        if self.action == "chat":
             self.needs_postgres = False
             self.needs_pinecone = False
             self.filters = {}
@@ -46,13 +41,20 @@ class SearchPlan(BaseModel):
         if self.action == "follow_up":
             self.needs_postgres = False
             self.needs_pinecone = False
-            # limit reflects how many businesses will be fetched
-            if self.follow_up_indices:
-                self.limit = len(self.follow_up_indices)
+            if self.follow_up_business_ids:
+                self.limit = len(self.follow_up_business_ids)
             else:
                 self.limit = 1
             return self
 
+        # business_search: if no flags set but filters exist, default to postgres.
+        # if semantic_query exists, default to pinecone.
         if not self.needs_postgres and not self.needs_pinecone:
-            self.needs_postgres = True
+            if self.filters:
+                self.needs_postgres = True
+            if self.semantic_query:
+                self.needs_pinecone = True
+            if not self.filters and not self.semantic_query:
+                self.needs_pinecone = True  # Blind broad search fallback
+
         return self
