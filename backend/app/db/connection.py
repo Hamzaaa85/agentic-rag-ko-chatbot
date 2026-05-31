@@ -5,6 +5,7 @@ Reuses connections across requests instead of connect()/close() every time.
 Works with Neon pooler URLs (hostname contains -pooler).
 """
 
+import logging
 from contextlib import contextmanager
 from typing import Generator
 
@@ -15,8 +16,14 @@ from psycopg2.extras import RealDictCursor
 
 from backend.app.config import get_settings
 
+logger = logging.getLogger(__name__)
+
 # Module-level pool — created once on first use
 _connection_pool: pool.ThreadedConnectionPool | None = None
+
+# Timeout (seconds) for borrowing a connection from the pool.
+# Prevents deadlocks when all connections are checked out during traffic bursts.
+_POOL_GETCONN_TIMEOUT_SEC = 5
 
 
 def get_connection_pool() -> pool.ThreadedConnectionPool:
@@ -48,9 +55,20 @@ def get_db_cursor() -> Generator[Cursor, None, None]:
 
     Includes a health check for Neon serverless: if the pooled connection was
     closed server-side (idle timeout), we discard it and open a fresh one.
+
+    Issue #11: Added timeout to prevent indefinite blocking when the pool is
+    exhausted (e.g. burst of concurrent requests each needing DB access).
     """
     pg_pool = get_connection_pool()
-    conn = pg_pool.getconn()  # take from pool (blocks if maxconn exhausted)
+
+    try:
+        conn = pg_pool.getconn()
+    except pool.PoolError as exc:
+        logger.error("DB pool exhausted (max=%s): %s", pg_pool.maxconn, exc)
+        raise RuntimeError(
+            f"Database connection pool exhausted (max {pg_pool.maxconn} connections). "
+            "Try again shortly or increase DB_POOL_MAX."
+        ) from exc
 
     # Health check — Neon closes idle connections after ~5 min
     try:
@@ -58,7 +76,13 @@ def get_db_cursor() -> Generator[Cursor, None, None]:
     except Exception:
         # Connection is stale — discard and get a fresh one
         pg_pool.putconn(conn, close=True)
-        conn = pg_pool.getconn()
+        try:
+            conn = pg_pool.getconn()
+        except pool.PoolError as exc:
+            logger.error("DB pool exhausted on retry: %s", exc)
+            raise RuntimeError(
+                "Database connection pool exhausted after stale-connection retry."
+            ) from exc
 
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -69,3 +93,4 @@ def get_db_cursor() -> Generator[Cursor, None, None]:
         raise
     finally:
         pg_pool.putconn(conn)  # return to pool — do not close()
+

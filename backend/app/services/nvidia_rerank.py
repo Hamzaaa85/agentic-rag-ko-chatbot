@@ -21,16 +21,31 @@ def _bundle_to_passage(bundle: Dict[str, Any]) -> str:
     description = biz.get("message") or ""
 
     services = ""
-    for highlight in (bundle.get("highlights") or [])[:1]:
-        services = highlight.get("products_or_services") or ""
+    for highlight in (bundle.get("highlights") or []):
+        services += (highlight.get("products_or_services") or "") + " "
+        
+    reviews = []
+    for review in (bundle.get("reviews") or [])[:2]:
+        text = review.get("review") or ""
+        if text:
+            reviews.append(text)
+            
+    faqs = []
+    for faq in (bundle.get("faqs") or [])[:2]:
+        q = faq.get("question") or ""
+        a = faq.get("answer") or ""
+        if q and a:
+            faqs.append(f"Q: {q} A: {a}")
 
     parts = [
         f"Name: {name}",
         f"Category: {category}" + (f" / {sub_category}" if sub_category else ""),
         f"Description: {description}",
-        f"Services: {services}",
+        f"Services: {services.strip()}",
+        f"Reviews: {' | '.join(reviews)}",
+        f"FAQs: {' | '.join(faqs)}"
     ]
-    return " | ".join(parts)
+    return " | ".join(p for p in parts if not p.endswith(": ") and not p.endswith(":"))
 
 
 def rerank_with_scores(

@@ -1,0 +1,66 @@
+{
+  "history": [
+    {
+      "role": "user",
+      "content": "Give me the address of Wellness by CDR and the phone number of Health Chambers and Skyfitness"
+    },
+    {
+      "role": "assistant",
+      "content": "Absolutely — here are the details you asked for:\n\n**Wellness by CDR**  \n- **Address:** Aman, Shop #4, Saima Fine Tower, Shaheed-e-Millat Road Darul, Society, Karachi\n\n**Health Chambers**  \n- **Phone:** 03242111338\n\n**Skyfitness**  \n- **Phone:** 051-2711313\n\nIf you’d like, I can also share the WhatsApp numbers or full contact details for any of these. Would you like that?"
+    },
+    {
+      "role": "user",
+      "content": "Yeah share the whatsapp number and all the details as well"
+    },
+    {
+      "role": "assistant",
+      "content": "Absolutely — here are the full details with the WhatsApp numbers included:\n\n**Wellness by CDR**  \n- **Address:** Aman, Shop #4, Saima Fine Tower, Shaheed-e-Millat Road Darul, Society, Karachi  \n- **Phone:** 03116619522  \n- **WhatsApp:** 03116619522  \n- **Email:** wellness@creativedesignsrealm.com  \n- **Website:** https://creativedesignsrealm.com/wellness/  \n- **Instagram:** https://www.instagram.com/wellnessbycdr/  \n- **Facebook:** https://www.facebook.com/p/Wellness-by-CDR-100091974257762/  \n- **Services:** Spa treatments, salon services, natural healing therapies, cafe with healthy snacks, face and body care, hair and makeup, hand and foot care, depilation services  \n\n**Health Chambers**  \n- **Address:** Ground Floor, Aqsa Palace, Mustafa St, Dhoraji Kathiawar CHS, Karachi, 75530  \n- **Phone:** 03242111338  \n- **WhatsApp:** 03242111338  \n- **Email:** healthchambers@gmail.com  \n- **Facebook:** https://www.facebook.com/HealthChambers/  \n- **Services:** Drug-free healing therapies, disease prevention programs, holistic health consultations  \n\n**Skyfitness**  \n- **Address:** Plot #34, Lower Ground Floor, Civic Center, Phase 4, Bahria Town, Islamabad 46220, Pakistan  \n- **Phone:** 051-2711313  \n- **WhatsApp:** 0330-0622221  \n- **Email:** info@skyfitness.pk  \n- **Website:** https://skyfitness.pk/contact-us/  \n- **Services:** Personal training sessions, group fitness classes, modern gym facilities  \n\nIf you want, I can also help you pick which one is best for you based on gym, wellness, or location."
+    },
+    {
+      "role": "user",
+      "content": "I am looking for an affordable yet quality gym, i travel alot between karachi and islamabad, so i want to make sure i keep working out and stay healthy "
+    },
+    {
+      "role": "assistant",
+      "content": "I’d be happy to help — I took a look at the Karachi listings, and I found **one relevant health & wellness option** that could fit what you’re after:\n\n### 1) Elevate Wellness\n- **Category:** Health & Wellness / Gyms  \n- **City:** Karachi  \n- **Description:** An elevated experience for physiotherapy, sports therapy, chiropractic adjustments, and quality relaxation massage therapies. They also say they provide services throughout Karachi.  \n- **Services:**  \n  - Physiotherapy sessions  \n  - Sports therapy  \n  - Chiropractic adjustments  \n  - Relaxation massage therapies  \n\nI didn’t find a clearly labeled “affordable gym” in the Karachi results, but **Elevate Wellness** is the closest health-related match from what came up.\n\nSince you travel between **Karachi and Islamabad**, I can also help you find a second option in **Islamabad** next if you’d like. Would you like me to look for that?"
+    }
+  ],
+  "last_business_ids": [
+    1455,
+    1218,
+    90,
+    1057,
+    915,
+    95,
+    908,
+    91,
+    1302
+  ],
+  "last_business_names": [
+    "Behram sports",
+    "Maqsad",
+    "Elevate Wellness",
+    "Faash Wear",
+    "Skyfitness",
+    "Health Chambers",
+    "Taqwa Institute of Physiotherapy and Health Sciences",
+    "Wellness by CDR",
+    "Physio Care & Rehabilitation"
+  ],
+  "last_filters": {
+    "city": "Karachi"
+  },
+  "last_plan": {
+    "action": "business_search",
+    "answer": null,
+    "needs_postgres": true,
+    "needs_pinecone": true,
+    "filters": {
+      "city": "Karachi"
+    },
+    "semantic_query": "affordable quality gym",
+    "limit": 5,
+    "follow_up_business_ids": []
+  },
+  "summary": "User is looking for gyms/fitness places in Pakistani cities, especially Karachi and Islamabad. Previously searched for a gym in Karachi and then specifically found Skyfitness in Islamabad with interest in beginner-friendly options and female-only workout spaces."
+}

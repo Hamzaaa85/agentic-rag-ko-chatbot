@@ -171,12 +171,63 @@ def fetch_full_business_bundle(cur: Cursor, business_id: int) -> dict[str, Any] 
 
 
 def fetch_business_bundles_by_ids(cur: Cursor, business_ids: list[int]) -> list[dict[str, Any]]:
-    """Many ids — preserves order, skips missing ids."""
+    """Many ids — batch fetches all data in 7 queries instead of 7*N."""
+    if not business_ids:
+        return []
+
+    # Replace WHERE id = %s with WHERE id = ANY(%s) dynamically
+    q_listings = SQL_LISTING_BY_ID.replace("b.id = %s", "b.id = ANY(%s)")
+    q_seo = SQL_SEO_BY_BUSINESS.replace("business_id = %s", "business_id = ANY(%s)")
+    q_highlights = SQL_HIGHLIGHTS_BY_BUSINESS.replace("business_id = %s", "business_id = ANY(%s)")
+    q_package = SQL_PACKAGE_BY_BUSINESS.replace("business_id = %s", "business_id = ANY(%s)")
+    q_faqs = SQL_FAQS_BY_BUSINESS.replace("business_id = %s", "business_id = ANY(%s)")
+    q_reviews = SQL_REVIEWS_BY_BUSINESS.replace("business_id = %s", "business_id = ANY(%s)")
+    # Remove LIMIT 20 from reviews when batching to ensure we get them all (or use a window function, but removing is fine here)
+    q_reviews = q_reviews.replace("LIMIT 20", "")
+    q_ctas = SQL_CTAS_BY_BUSINESS.replace("business_id = %s", "business_id = ANY(%s)")
+
+    # Fetch all
+    cur.execute(q_listings, (business_ids,))
+    listings = {row["id"]: row_to_dict(row) for row in cur.fetchall()}
+
+    # Helper to group rows by business_id
+    from collections import defaultdict
+
+    def fetch_grouped(query: str, id_col: str = "business_id") -> dict[int, list[dict]]:
+        # Temporarily inject business_id into SELECT if it's not there, so we can group
+        # Wait, the SQL constants don't select business_id! Let's inject it.
+        # It's safer to just prepend "business_id, " after SELECT.
+        injected = query.replace("SELECT", "SELECT business_id, ", 1)
+        cur.execute(injected, (business_ids,))
+        grouped = defaultdict(list)
+        for row in cur.fetchall():
+            d = row_to_dict(row)
+            if not d: continue
+            bid = d.pop("business_id")
+            grouped[bid].append(d)
+        return dict(grouped)
+
+    seo_map = fetch_grouped(q_seo)
+    hl_map = fetch_grouped(q_highlights)
+    pkg_map = fetch_grouped(q_package)
+    faq_map = fetch_grouped(q_faqs)
+    rev_map = fetch_grouped(q_reviews)
+    cta_map = fetch_grouped(q_ctas)
+
     results: list[dict[str, Any]] = []
-    for business_id in business_ids:
-        bundle = fetch_full_business_bundle(cur, business_id)
-        if bundle:
-            results.append(bundle)
+    # Preserve original order
+    for bid in business_ids:
+        if bid not in listings:
+            continue
+        results.append({
+            "business": listings[bid],
+            "seo_data": seo_map.get(bid, []),
+            "highlights": hl_map.get(bid, []),
+            "package_content": pkg_map.get(bid, [{}])[0] if pkg_map.get(bid) else {},
+            "faqs": faq_map.get(bid, []),
+            "reviews": rev_map.get(bid, []),
+            "ctas": cta_map.get(bid, []),
+        })
     return results
 
 
@@ -258,7 +309,7 @@ def search_business_listings(
 ) -> list[BusinessListItem]:
     """Exact/filter search — returns light rows for merge with Pinecone."""
     where_sql, params = _build_search_where(filters)
-    sql = f"{SQL_SEARCH_SELECT} {where_sql} ORDER BY b.id LIMIT %s"
+    sql = f"{SQL_SEARCH_SELECT} {where_sql} ORDER BY (b.package_status::text = 'business_guaranteed') DESC, (b.package_status::text = 'verified') DESC, b.has_website DESC, b.id DESC LIMIT %s"
     params.append(limit)
 
     cur.execute(sql, params)

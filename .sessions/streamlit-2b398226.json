@@ -1,0 +1,34 @@
+{
+  "history": [
+    {
+      "role": "user",
+      "content": "Looking for a gym in Karachi and Islamabad"
+    },
+    {
+      "role": "assistant",
+      "content": "I couldn’t find a matching business for your request. Could you share a specific city, area, or a related term like “fitness center” so I can try again?"
+    },
+    {
+      "role": "user",
+      "content": "Looking for a gym in Karachi"
+    },
+    {
+      "role": "assistant",
+      "content": "I couldn’t find a matching business for your request. Could you share a more specific area in Karachi or try a related term like “fitness center” or “health club”?"
+    }
+  ],
+  "last_business_ids": [],
+  "last_business_names": [],
+  "last_filters": {},
+  "last_plan": {
+    "action": "business_search",
+    "answer": null,
+    "filters": {
+      "city": "Karachi",
+      "category_id": 6
+    },
+    "semantic_query": "gym",
+    "limit": 5,
+    "follow_up_business_ids": []
+  }
+}

@@ -11,9 +11,11 @@ Return only data matching the SearchPlan schema. Never write SQL.
 
 Choose exactly one action:
 
-- chat: greetings, thanks, general small talk, OR conversational questions about the previously shown businesses (e.g., "Which of these is best for cakes?", "What do you think of them?").
+- direct_reply: for simple greetings or small talk (e.g., "hello", "thanks", "bye", "shukriya") where NO context history is needed. Provide an instant, friendly reply string in the `answer` field. This skips the heavy answer engine completely.
+
+- chat: conversational questions about the previously shown businesses (e.g., "Which of these is best for cakes?", "What do you think of them?").
   Do NOT generate the answer yourself. Just route to 'chat' and the answer engine will take over.
-  Examples: "hello", "shukriya", "bye", "how are you", "which one is better?", "i want a cake which one should i pick"
+  Examples: "which one is better?", "i want a cake which one should i pick"
 
 - follow_up: the user is explicitly asking to fetch MORE detail, contact info, or website for specific previously shown businesses.
   This includes:
@@ -36,20 +38,18 @@ SESSION MEMORY & CONTEXT (CRITICAL):
   - If they just say "multani halwa" or "dentist", and there is no city in the immediate text, LEAVE CITY EMPTY. Do not guess it from the summary or history.
 
 CATEGORY MATCHING (CRITICAL — use the list below):
-  When the user mentions a business type, find the closest match from the
-  categories list below and put the exact id in filters:
-  - If a sub-category matches, use "sub_category_id" in filters.
-  - If only a parent category matches, use "category_id" in filters.
-  - If no category clearly matches, do NOT set any category filter — rely on
-    Pinecone semantic search instead.
+  When the user mentions a business type, find the closest BROAD category match from the categories list below and put the exact id in `category_id`.
+  - ALWAYS prefer `category_id` (the parent category) over `sub_category_id`. This allows the AI semantic search to find businesses that forgot to set their sub-category!
+  - For example, if the user asks for a "gym", set `category_id=6` (Health & Wellness) and set `semantic_query="gym"`. Do NOT set `sub_category_id=28`.
+  - Only use `sub_category_id` if the user's request is extremely strict.
+  - If no broad category clearly matches, do NOT set any category filter — rely entirely on Pinecone semantic search instead.
   - NEVER put category_name or sub_category_name in filters. Always use IDs.
 
   Examples:
-  - User says "gym" → sub_category_id=28 (Gyms)
-  - User says "dentist" → category_id=6 (Health & Wellness — no dental sub-category)
-  - User says "lawyer" → sub_category_id=52 (Lawyers)
-  - User says "restaurant" or "food" → category_id=4 (Food & Beverage)
-  - User says "tailor" → sub_category_id=24 (Tailoring Services)
+  - User says "gym" → category_id=6, semantic_query="gym"
+  - User says "dentist" → category_id=6, semantic_query="dentist"
+  - User says "lawyer" → category_id=7 (Professional Services), semantic_query="lawyer"
+  - User says "restaurant" → category_id=4, semantic_query="restaurant"
 
 {categories}
 
@@ -62,11 +62,10 @@ Use Postgres for exact filters:
 - has_facebook
 
 PINECONE SEMANTIC SEARCH (CRITICAL):
-PINECONE SEMANTIC SEARCH (CRITICAL):
 You MUST set needs_pinecone to TRUE for ALMOST ALL QUERIES.
-Only set needs_pinecone to FALSE if the user's exact words are literally just a broad category name and a city (e.g., "gym in Karachi", "food in Lahore").
-If the user asks for ANYTHING specific inside a category (e.g., "sweet shops", "multani halwa", "iphone", "pizza", "cheap baby products", "dentist"), YOU MUST SET needs_pinecone=TRUE.
-When using Pinecone, always populate semantic_query with a clear English search phrase (e.g., "sweet shops").
+Only set needs_pinecone to FALSE if the user's exact words are literally just a broad category name and a city (e.g., "health and wellness in Karachi", "food in Lahore").
+If the user asks for ANYTHING specific inside a category (e.g., "gym", "sweet shops", "multani halwa", "iphone", "pizza", "cheap baby products", "dentist"), YOU MUST SET needs_pinecone=TRUE.
+When using Pinecone, always populate semantic_query with a clear English search phrase (e.g., "gym", "sweet shops").
 
 AREA / LOCALITY HANDLING (CRITICAL):
   Postgres only filters by city (e.g. "Karachi", "Lahore") — it CANNOT filter by

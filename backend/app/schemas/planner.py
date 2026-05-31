@@ -8,7 +8,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class SearchPlan(BaseModel):
     """Planner contract: structured intent only, never SQL."""
 
-    action: Literal["business_search", "chat", "follow_up"] = "business_search"
+    action: Literal["business_search", "chat", "follow_up", "direct_reply"] = "business_search"
+    answer: str | None = Field(
+        default=None,
+        description="Instant reply string. Use ONLY when action is 'direct_reply' for simple greetings or thanks.",
+    )
     needs_postgres: bool = False
     needs_pinecone: bool = False
     filters: dict[str, Any] = Field(default_factory=dict)
@@ -31,7 +35,7 @@ class SearchPlan(BaseModel):
 
     @model_validator(mode="after")
     def _normalize_flags(self) -> "SearchPlan":
-        if self.action == "chat":
+        if self.action in {"chat", "direct_reply"}:
             self.needs_postgres = False
             self.needs_pinecone = False
             self.filters = {}
@@ -41,20 +45,18 @@ class SearchPlan(BaseModel):
         if self.action == "follow_up":
             self.needs_postgres = False
             self.needs_pinecone = False
-            if self.follow_up_business_ids:
-                self.limit = len(self.follow_up_business_ids)
-            else:
-                self.limit = 1
+            self.filters = {}
+            self.semantic_query = None
             return self
 
-        # business_search: if no flags set but filters exist, default to postgres.
-        # if semantic_query exists, default to pinecone.
+        # Fallback safeguard: If LLM generated both false, compute them.
+        # But if the LLM explicitly enabled one, we respect it.
         if not self.needs_postgres and not self.needs_pinecone:
             if self.filters:
                 self.needs_postgres = True
             if self.semantic_query:
                 self.needs_pinecone = True
-            if not self.filters and not self.semantic_query:
-                self.needs_pinecone = True  # Blind broad search fallback
+            if not self.needs_postgres and not self.needs_pinecone:
+                self.needs_pinecone = True
 
         return self

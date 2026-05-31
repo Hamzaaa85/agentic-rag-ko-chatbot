@@ -2,24 +2,27 @@
 
 from __future__ import annotations
 
+import concurrent.futures
+import logging
 from typing import Any
-import asyncio
 
+from langchain_core.runnables import RunnableConfig
+
+from backend.app.config import get_settings
 from backend.app.graph.prompts import (
     ANSWER_SYSTEM_PROMPT,
     build_answer_user_prompt,
     build_planner_user_prompt,
     get_planner_system_prompt,
 )
-from backend.app.config import get_settings
 from backend.app.graph.state import BusinessChatState
-from langchain_core.runnables import RunnableConfig
-
 from backend.app.schemas.planner import SearchPlan
-from backend.app.services.llm import get_chat_model
+from backend.app.services.llm import get_chat_model, get_planner_model
 from backend.app.services.nvidia_rerank import rerank_with_scores
 from backend.app.services.session_memory import get_session_memory, save_session_memory
 from backend.app.tools import get_businesses_by_ids, search_businesses, search_pinecone
+
+logger = logging.getLogger(__name__)
 
 
 def _with_error(state: BusinessChatState, message: str) -> dict[str, Any]:
@@ -52,9 +55,9 @@ def load_memory(state: BusinessChatState) -> dict[str, Any]:
 
 
 def plan_query(state: BusinessChatState) -> dict[str, Any]:
-    """Ask the LLM for a strict structured plan."""
+    """Ask the LLM for a strict structured plan (uses cheaper planner model)."""
     memory = state.get("memory", {})
-    model = get_chat_model().with_structured_output(SearchPlan, method="function_calling")
+    model = get_planner_model().with_structured_output(SearchPlan, method="function_calling")
     prompt = build_planner_user_prompt(
         user_message=state["user_message"],
         history=state.get("history", []),
@@ -79,7 +82,37 @@ def plan_query(state: BusinessChatState) -> dict[str, Any]:
     return {"plan": plan.model_dump()}
 
 
-import concurrent.futures
+def _rewrite_query_to_english(query: str) -> str:
+    """Translate Roman Urdu / mixed-language queries to clean English for embedding.
+
+    Embedding models (text-embedding-3-large) are trained primarily on English.
+    Roman Urdu queries like 'sasta baby ka samaan' embed poorly and hurt recall.
+    This lightweight LLM call rewrites them into a clean English search phrase.
+    """
+    # All queries are translated. gpt-4o-mini is fast and handles Roman Urdu flawlessly.
+
+    system = (
+        "You are a search-query translator. Convert the user's query into a short, "
+        "clean English search phrase suitable for semantic vector search. "
+        "If it is already in English, return it unchanged. "
+        "Output ONLY the translated query, nothing else. No quotes, no explanation."
+    )
+    try:
+        response = get_planner_model().invoke(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": query},
+            ]
+        )
+        rewritten = str(response.content).strip()
+        if rewritten:
+            logger.info("Query rewrite: %r -> %r", query, rewritten)
+            return rewritten
+    except Exception as exc:
+        logger.warning("Query rewrite failed (using original): %s", exc)
+
+    return query
+
 
 def run_tools(state: BusinessChatState) -> dict[str, Any]:
     """Run only the retrieval tools requested by the planner concurrently."""
@@ -95,21 +128,34 @@ def run_tools(state: BusinessChatState) -> dict[str, Any]:
 
     def fetch_postgres():
         nonlocal postgres_results
-        try:
+        def _do_postgres():
             rows = search_businesses(filters=filters, limit=limit)
-            postgres_results = [row.model_dump() for row in rows]
+            return [row.model_dump() for row in rows]
+
+        try:
+            postgres_results = _do_postgres()
         except Exception as exc:
-            errors.append(f"Postgres search failed: {exc}")
+            if "connection already closed" in str(exc) or "server closed the connection" in str(exc):
+                try:
+                    postgres_results = _do_postgres()
+                except Exception as e2:
+                    errors.append(f"Postgres search failed after retry: {e2}")
+            else:
+                errors.append(f"Postgres search failed: {exc}")
 
     def fetch_pinecone():
         nonlocal pinecone_results
-        query = plan.semantic_query if plan.semantic_query else state["user_message"]
+        raw_query = plan.semantic_query if plan.semantic_query else state["user_message"]
+        # Issue #9: Rewrite Roman Urdu → English for better embedding quality
+        query = _rewrite_query_to_english(raw_query)
         raw_city = filters.get("city")
         pinecone_city = raw_city.strip().title() if raw_city and isinstance(raw_city, str) else None
         try:
+            # Issue #1: Capped top_k to avoid noise overload from low-quality matches
+            pinecone_top_k = min(limit * 5, 40)
             matches = search_pinecone(
                 query,
-                top_k=limit * 3,
+                top_k=pinecone_top_k,
                 city=pinecone_city,
                 category_id=filters.get("category_id"),
                 sub_category_id=filters.get("sub_category_id"),
@@ -121,7 +167,7 @@ def run_tools(state: BusinessChatState) -> dict[str, Any]:
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         f_postgres = executor.submit(fetch_postgres) if plan.needs_postgres else None
         f_pinecone = executor.submit(fetch_pinecone) if plan.needs_pinecone else None
-        
+
         if f_postgres:
             f_postgres.result()
         if f_pinecone:
@@ -169,14 +215,25 @@ def merge_results(state: BusinessChatState) -> dict[str, Any]:
         return {"business_ids": [int(ids[0])]}
 
     postgres_ids = [int(row["id"]) for row in state.get("postgres_results", []) if row.get("id")]
-    pinecone_ids = [
-        int(hit["business_id"])
-        for hit in state.get("pinecone_results", [])
-        if hit.get("business_id")
-    ]
+
+    # Issue #6: Score-based dedupe for Pinecone results.
+    # When multiple chunks from the same business match, keep only the BEST score
+    # per business_id. This prevents data-rich businesses (8 chunks) from appearing
+    # more relevant than data-light ones (3 chunks) purely due to chunk count.
+    best_pinecone_score: dict[int, float] = {}
+    for hit in state.get("pinecone_results", []):
+        bid = hit.get("business_id")
+        if bid is None:
+            continue
+        bid = int(bid)
+        score = float(hit.get("score", 0.0))
+        if bid not in best_pinecone_score or score > best_pinecone_score[bid]:
+            best_pinecone_score[bid] = score
+
+    # Pinecone IDs sorted by best score descending (true relevance ranking)
+    pinecone_ids = sorted(best_pinecone_score, key=best_pinecone_score.get, reverse=True)
 
     postgres_set = set(postgres_ids)
-    pinecone_set = set(pinecone_ids)
     ordered: list[int] = []
 
     # A "semantic" query expresses intent/quality/product (e.g. "multani halwa",
@@ -190,7 +247,7 @@ def merge_results(state: BusinessChatState) -> dict[str, Any]:
             ordered.append(business_id)
 
     if plan.needs_pinecone:
-        # Step 2: Pinecone-only IDs — semantically relevant, ranked by score
+        # Step 2: Pinecone-only IDs — semantically relevant, ranked by best score
         for business_id in pinecone_ids:
             if business_id not in ordered:
                 ordered.append(business_id)
@@ -208,8 +265,9 @@ def merge_results(state: BusinessChatState) -> dict[str, Any]:
             if business_id not in ordered:
                 ordered.append(business_id)
 
-    # Over-fetch (more than limit) so the reranker has candidates to choose from.
-    return {"business_ids": ordered[:limit * 3]}
+    # Issue #2: Reduced over-fetch from limit*3 to limit+3.
+    # Gives reranker a focused candidate set without drowning it in noise.
+    return {"business_ids": ordered[:limit + 3]}
 
 
 def fetch_business_details(state: BusinessChatState) -> dict[str, Any]:
@@ -221,6 +279,11 @@ def fetch_business_details(state: BusinessChatState) -> dict[str, Any]:
     try:
         return {"businesses": get_businesses_by_ids(business_ids)}
     except Exception as exc:
+        if "connection already closed" in str(exc) or "server closed the connection" in str(exc):
+            try:
+                return {"businesses": get_businesses_by_ids(business_ids)}
+            except Exception as e2:
+                return {**_with_error(state, f"Business detail fetch failed after retry: {e2}"), "businesses": []}
         return {**_with_error(state, f"Business detail fetch failed: {exc}"), "businesses": []}
 
 
@@ -244,8 +307,18 @@ def rerank_results(state: BusinessChatState) -> dict[str, Any]:
     settings = get_settings()
     if settings.rerank_abstain_enabled:
         real_scores = [s for s in scores if s is not None]
-        if plan.semantic_query and real_scores:
-            if max(real_scores) < settings.rerank_relevance_threshold:
+        if real_scores:
+            best_score = max(real_scores)
+            # Dynamic relative thresholding: filter out businesses that score significantly
+            # worse than the best match. This handles uncalibrated logits beautifully.
+            good_results = []
+            for bundle, score in zip(reranked, scores):
+                if score is None or score >= (best_score - settings.rerank_dropoff_margin):
+                    good_results.append(bundle)
+            reranked = good_results
+            
+            # If all were somehow filtered out, abstain
+            if not reranked:
                 return {"businesses": [], "business_ids": [], "no_match": True}
 
     # Items are bundles: the id lives under bundle["business"]["id"], not top-level.

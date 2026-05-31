@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     # openai_chat_model: str = "gpt-4o-mini"
     openai_chat_model: str = "gpt-5.4-mini-2026-03-17"
+    # Cheaper model for the planner (routing/classification only — no prose).
+    # gpt-4o-mini is fast, cheap, and excellent at structured output.
+    planner_chat_model: str = "gpt-4o-mini"
     database_url: str = ""
 
     # Postgres pool (use with Neon -pooler URL for best results)
@@ -34,12 +37,11 @@ class Settings(BaseSettings):
     # Reranking (NVIDIA NIM). When key is empty, reranking is skipped gracefully.
     # NVIDIA Reranker (Cross-Encoder)
     nvidia_api_key: str = ""
-    # Abstention drops results if the highest reranker score for a semantic query
-    # logit is below rerank_relevance_threshold. This is OFF by default because
-    # the right threshold depends on the model's score distribution and must be
-    # found with an eval set first — otherwise it wrongly rejects good results.
-    rerank_abstain_enabled: bool = False
-    rerank_relevance_threshold: float = -5.0
+    # Abstention: filter out results whose reranker logit is significantly worse than the top match.
+    # We use a relative dropoff margin rather than an absolute threshold because uncalibrated logits
+    # fluctuate wildly depending on the query. A margin of 4.0 aggressively filters noise.
+    rerank_abstain_enabled: bool = True
+    rerank_dropoff_margin: float = 4.0
 
     langsmith_tracing: bool = False
     langsmith_api_key: str | None = None

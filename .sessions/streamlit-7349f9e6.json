@@ -1,0 +1,59 @@
+{
+  "history": [
+    {
+      "role": "user",
+      "content": "Looking for gym in Karachi and Islamabad"
+    },
+    {
+      "role": "assistant",
+      "content": "I’d be happy to help! I checked the listings, and I could find gym-related options in **Karachi** — but I didn’t get any **Islamabad** results in this search.\n\n### Karachi options\n**1) Elevate Wellness**  \n- **Category:** Health & Wellness / Gyms  \n- **City:** Karachi  \n- **Description:** An elevated wellness experience offering physiotherapy, sports therapy, chiropractic adjustments, and relaxation massage therapies.  \n- **Services:** Physiotherapy sessions, Sports therapy, Chiropractic adjustments, Relaxation massage therapies  \n\n**2) Health & Wellness Center & Insitiute Karachi By Dr. Mubashara Khan**  \n- **Category:** Health & Wellness  \n- **City:** Karachi  \n- **Description:** A medical facility in Gulistan e Johar with online appointment and consultation options.  \n- **Services:** Medical consultations, Health assessments, Online doctor appointments  \n\n**3) Health Chambers**  \n- **Category:** Health & Wellness / Diagnostic Labs  \n- **City:** Karachi  \n- **Description:** A wellness center focused on healing without drugs or surgery, using unique therapies to support healthy living.  \n- **Services:** Drug-free healing therapies, Disease prevention programs, Holistic health consultations  \n\n**4) Holistimed Wellness Center**  \n- **Category:** Health & Wellness / Diagnostic Labs  \n- **City:** Karachi  \n- **Description:** A multidisciplinary healthcare facility offering consultations in several medical and physiotherapy-related areas.  \n- **Services:** Diabetology consultations, General medicine, Physiotherapy, Orthopedics, Psychiatry, Neurophysiology, Pediatrics, Gynecology, Sonology  \n\n**5) Taqwa Institute of Physiotherapy and Health Sciences**  \n- **Category:** Health & Wellness  \n- **City:** Karachi  \n- **Description:** A physiotherapy and health sciences institute for rehab and training.  \n- **Services:** Rehabilitation therapy, Physiotherapy training programs, Health sciences education  \n\nIf you’d like, I can next help look specifically for **gym options in Islamabad**."
+    },
+    {
+      "role": "user",
+      "content": "Yes"
+    },
+    {
+      "role": "assistant",
+      "content": "Sure thing — I found a few Islamabad options, but I should be honest: **only one is actually a gym/fitness club**. The others are more rehab/therapy centers, so I’m leaving them out of the main list.\n\n### 1) Skyfitness\n- **Category:** Health & Wellness\n- **City:** Islamabad\n- **Description:** Gym and fitness club in Islamabad and Rawalpindi.\n- **Services:** Personal training sessions, Group fitness classes, Modern gym facilities\n\nIf you’d like, I can also look for **more gyms in Islamabad** or help with another category. Would you like me to search further?"
+    }
+  ],
+  "last_business_ids": [
+    915,
+    924,
+    925,
+    923,
+    917,
+    90,
+    93,
+    95,
+    94,
+    908
+  ],
+  "last_business_names": [
+    "Skyfitness",
+    "ATHLEAN PHYSICAL THERAPY",
+    "LEPR",
+    "IRHC | Islamabad Rehabilitation Center",
+    "IRM Hospital",
+    "Elevate Wellness",
+    "Health & Wellness Center & Insitiute Karachi By Dr. Mubashara Khan",
+    "Health Chambers",
+    "Holistimed Wellness Center",
+    "Taqwa Institute of Physiotherapy and Health Sciences"
+  ],
+  "last_filters": {
+    "city": "Islamabad",
+    "category_id": 6
+  },
+  "last_plan": {
+    "action": "business_search",
+    "answer": null,
+    "filters": {
+      "city": "Islamabad",
+      "category_id": 6
+    },
+    "semantic_query": "gym",
+    "limit": 5,
+    "follow_up_business_ids": []
+  }
+}

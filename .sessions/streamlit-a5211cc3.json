@@ -1,0 +1,51 @@
+{
+  "history": [
+    {
+      "role": "user",
+      "content": "Find Gyms in Karachi"
+    },
+    {
+      "role": "assistant",
+      "content": "Sure thing! I found **one relevant option in Karachi**:\n\n### Elevate Wellness\n- **Category:** Health & Wellness / Gyms\n- **City:** Karachi\n- **Address:** Jumeirah Mall, Main Tariq Rd, Delhi Society Delhi CHS, Karachi, 75620\n- **Description:** They provide an elevated experience in physiotherapy, sports therapy, chiropractic adjustments, and relaxation massage therapies. They also serve clients throughout Karachi.\n- **Services:** Physiotherapy sessions, sports therapy, chiropractic adjustments, relaxation massage therapies\n\n**Contact details:**\n- **Phone:** 03493538283\n- **WhatsApp:** 03342719068\n- **Email:** info@elevatewellness.pk\n- **Website:** https://elevatewellness.pk/\n- **Instagram:** https://www.instagram.com/elevatewellnesspk/\n- **Facebook:** https://www.facebook.com/profile.php?id=61573931668667#\n\n**What people said:**\n- Professional physiotherapy and comfortable staff\n- Relaxing massage therapy\n- Helpful chiropractic adjustments for back pain\n\nIf you want, I can also help you look for **more gyms in Karachi** or narrow it down by **area, budget, or gym type**."
+    },
+    {
+      "role": "user",
+      "content": "Is there any other gyms in Islamabad?"
+    },
+    {
+      "role": "assistant",
+      "content": "I couldn’t find a matching business for that request. Could you share a specific area in Islamabad or try a related term like “fitness center” or “gym near me”?"
+    },
+    {
+      "role": "user",
+      "content": "Gyms in Islamabad"
+    },
+    {
+      "role": "assistant",
+      "content": "I couldn’t find a matching business for your request. Could you share a specific area in Islamabad or try a related term like “fitness center” or “health club”?"
+    }
+  ],
+  "last_business_ids": [
+    90
+  ],
+  "last_business_names": [
+    "Elevate Wellness"
+  ],
+  "last_filters": {
+    "city": "Karachi",
+    "sub_category_id": 28
+  },
+  "last_plan": {
+    "action": "business_search",
+    "answer": null,
+    "needs_postgres": true,
+    "needs_pinecone": false,
+    "filters": {
+      "city": "Islamabad",
+      "sub_category_id": 28
+    },
+    "semantic_query": null,
+    "limit": 5,
+    "follow_up_business_ids": []
+  }
+}
